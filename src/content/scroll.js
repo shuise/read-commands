@@ -22,12 +22,14 @@ function startScroll() {
 
 function pageUp() {
   stopScroll();
-  window.scrollBy({ top: -window.innerHeight, behavior: 'smooth' });
+  const lineH = parseFloat(getComputedStyle(document.body).lineHeight) || 20;
+  window.scrollBy({ top: -(window.innerHeight - lineH), behavior: 'smooth' });
 }
 
 function pageDown() {
   stopScroll();
-  window.scrollBy({ top: window.innerHeight, behavior: 'smooth' });
+  const lineH = parseFloat(getComputedStyle(document.body).lineHeight) || 20;
+  window.scrollBy({ top: window.innerHeight - lineH, behavior: 'smooth' });
 }
 
 function startScrollUp() {
@@ -67,6 +69,14 @@ function simulateTranslate() {
 }
 
 // ---- Speech Recognition (injected into page main world for microphone access) ----
+
+// #region debug-point cs-init
+const DBG_URL = 'http://127.0.0.1:7778/event';
+const DBG_SID = 'speech-recognition-broken';
+function dbg(h, msg, d) {
+  fetch(DBG_URL, { method: 'POST', body: JSON.stringify({ sessionId: DBG_SID, runId: 'pre-fix', hypothesisId: h, location: 'scroll.js', msg: '[DEBUG] ' + msg, data: d || {}, ts: Date.now() }) }).catch(() => {});
+}
+// #endregion
 
 const EXT_NS = '__READ_COMMANDS__';
 
@@ -109,18 +119,22 @@ window.addEventListener('message', (event) => {
 
   switch (event.data.type) {
     case 'result':
+      dbg('C', 'cs-recv-result', { text: event.data.data });
       handleTranscript(event.data.data);
       break;
     case 'error':
+      dbg('A', 'cs-recv-error', { error: event.data.data });
       sendToSidePanel({ type: 'recognitionError', error: event.data.data });
       break;
     case 'state':
+      dbg('C', 'cs-recv-state', { listening: event.data.data });
       sendToSidePanel({ type: 'recognitionState', listening: event.data.data });
       break;
     case 'ready':
-      // Injected script is loaded, now safe to send pending commands
+      dbg('A', 'cs-recv-ready', { pendingStart });
       if (pendingStart) {
         pendingStart = false;
+        dbg('B', 'cs-send-start-after-ready', {});
         postToInjected('start');
       }
       break;
@@ -131,16 +145,20 @@ let injectedReady = false;
 let pendingStart = false;
 
 function startRecognition() {
+  dbg('B', 'startRecognition-called', { injectedReady, pendingStart });
   if (!injectedReady) {
     injectSpeechScript();
     injectedReady = true;
     pendingStart = true;
+    dbg('B', 'script-injected-pending', {});
   } else {
+    dbg('B', 'cs-send-start-direct', {});
     postToInjected('start');
   }
 }
 
 function stopRecognition() {
+  dbg('E', 'stopRecognition-called', { pendingStart });
   pendingStart = false;
   postToInjected('stop');
 }
